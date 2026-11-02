@@ -1,0 +1,17 @@
+{
+  "id": "dsh-check-for-update",
+  "version": "0.1.2",
+  "main": "./lib/index.js",
+  "client": {
+    "main": "./lib/client.js",
+    "inject": [
+      "@deepseek-ai/dsh-client-locale",
+      "@deepseek-ai/dsh-client-modules",
+      "@deepseek-ai/dsh-client-ui-renderer",
+      "@deepseek-ai/dsh-client-ui-settings"
+    ]
+  },
+  "engines": {
+    "dsh": ">=0.2.1-rc.2"
+  }
+}
