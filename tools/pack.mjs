@@ -21,7 +21,7 @@ const PACKAGE = join(STAGE, 'package')
 
 /** The published payload: exactly the `files` list plus the manifest. */
 const PAYLOAD_DIRS = ['lib', 'src', 'tools']
-const PAYLOAD_FILES = ['cordis.patch.yml', 'dsh.plugin.json', 'README.md']
+const PAYLOAD_FILES = ['cordis.patch.yml', 'dsh.plugin.json', 'README.md', 'LICENSE']
 
 rmSync(DIST, { recursive: true, force: true })
 mkdirSync(PACKAGE, { recursive: true })

@@ -24,7 +24,8 @@
     "tools",
     "cordis.patch.yml",
     "dsh.plugin.json",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsdown",
@@ -65,5 +66,5 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.1"
   },
-  "license": "BSD-3-Clause"
+  "license": "MIT"
 }
