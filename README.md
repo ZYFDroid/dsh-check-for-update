@@ -70,6 +70,8 @@ node tools/run-bundle-smoke.mjs
 ## 兼容性
 
 - `engines.dsh`: `>=0.2.1-rc.2`（`release.version` 自 0.2.1-alpha.4 起提供）
+- 已按 **dsh 0.2.2-rc.1** 复核：client module manifest 仍带 `release.version`，
+  `settings.section` 的注册参数与 `locale.register`/`bind` 契约未变，无需改源码
 - 只使用 client 侧的 `slots`、`locale`、`modules` 服务；host 入口为空，不新增 host
   服务、设置、工具或 session event。
 - 直接使用浏览器 `fetch` 访问 npm registry；失败只写日志/设置页错误，不弹提示。
