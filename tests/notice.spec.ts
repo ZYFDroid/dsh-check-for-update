@@ -15,6 +15,8 @@ const t: Translate = (key, params) => {
 const result: CheckResult = {
   currentVersion: '0.2.1-rc.2',
   latestVersion: '0.2.1-rc.5',
+  nextVersion: null,
+  targetVersion: '0.2.1-rc.5',
   updateAvailable: true,
   checkedAt: 1_700_000_000_000,
 }
@@ -46,6 +48,29 @@ describe('DshUpdateNotice', () => {
     notice.dispose()
   })
 
+  it('shows a newer next tag and installs it', () => {
+    const notice = new DshUpdateNotice(t)
+    notice.show({
+      ...result,
+      currentVersion: '0.2.2-rc.1',
+      latestVersion: '0.2.2-rc.1',
+      nextVersion: '0.2.2-rc.2',
+      targetVersion: '0.2.2-rc.2',
+    })
+    const root = document.querySelector('.dsh-cfu-notice')
+    expect(root?.textContent).toContain('Next version')
+    expect(root?.textContent).toContain('0.2.2-rc.2')
+    expect(root?.textContent).toContain('npm install -g @deepseek-ai/dsh@0.2.2-rc.2')
+    notice.dispose()
+  })
+
+  it('omits the next row when next is not ahead', () => {
+    const notice = new DshUpdateNotice(t)
+    notice.show(result)
+    expect(document.querySelector('.dsh-cfu-notice')?.textContent).not.toContain('Next version')
+    notice.dispose()
+  })
+
   it('injects its stylesheet once', () => {
     const first = new DshUpdateNotice(t)
     const second = new DshUpdateNotice(t)
@@ -59,7 +84,12 @@ describe('DshUpdateNotice', () => {
   it('refreshes an open notice with a newer result', () => {
     const notice = new DshUpdateNotice(t)
     notice.show(result)
-    notice.show({ ...result, currentVersion: '0.2.1-rc.1', latestVersion: '0.2.2-rc.1' })
+    notice.show({
+      ...result,
+      currentVersion: '0.2.1-rc.1',
+      latestVersion: '0.2.2-rc.1',
+      targetVersion: '0.2.2-rc.1',
+    })
     const root = document.querySelector('.dsh-cfu-notice')
     expect(root?.textContent).toContain('0.2.1-rc.1')
     expect(root?.textContent).toContain('0.2.2-rc.1')

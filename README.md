@@ -6,17 +6,22 @@
 
 - 页面载入后读取当前 DSH 版本（来自 client module manifest 的 `release.version`），
   请求 [`https://registry.npmjs.org/@deepseek-ai%2fdsh`](https://registry.npmjs.org/@deepseek-ai%2fdsh)，
-  只比较 `dist-tags.latest`（忽略 `alpha` 等其它 tag）。
+  同时比较 `dist-tags.latest` 和 `dist-tags.next`（忽略 `alpha` 等其它 tag）。
+  `next` 是尚未进入 `latest` 的候选版本；只有当它比 `latest` 更新时才会被采用，
+  避免把旧的或已提升为 `latest` 的 `next` 当成升级。
 - 每天最多自动检查一次（按本地日历日，记录在
   `localStorage["dsh-check-for-update:last-check-day"]`）。
-- 当 `latest !== 当前版本` 时，在右下角显示一个**不会自动消失**的提示，包含：
+- 当当前版本低于可安装版本时，在右下角显示一个**不会自动消失**的提示，包含：
   - 当前版本
-  - 最新版本
-  - 更新命令：`npm install -g @deepseek-ai/dsh@<latest>`
+  - 最新版本（`latest`）
+  - 候选版本（`next`，仅当它比 `latest` 新时显示）
+  - 更新命令：优先安装 `next`，否则安装 `latest`，即
+    `npm install -g @deepseek-ai/dsh@<目标版本>`
   - 复制按钮
   - 关闭按钮（唯一的消失方式）
+- 版本比较按 semver 优先级进行：当前版本已经比 registry 版本新时不会提示“降级”。
 - 设置页面新增「检查更新」页：点击「立即检查」立刻请求，无视每天一次的限制；
-  页面内同时显示当前版本、最新版本、检查结果和更新命令。
+  页面内同时显示当前版本、最新版本、候选版本（如有）、检查结果和更新命令。
 
 ## 安装
 

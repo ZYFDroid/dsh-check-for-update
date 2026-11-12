@@ -5,6 +5,7 @@ import { UpdateSettingsSection } from '../src/client/UpdateSettingsSection.tsx'
 import { UpdateController } from '../src/client/controller.ts'
 import { en, type LocaleKey, type Translate } from '../src/client/locales.ts'
 import type { UpdateNotice } from '../src/client/notice.ts'
+import type { RegistryTags } from '../src/client/update-core.ts'
 
 const t: Translate = (key, params) => {
   let text = en[key as LocaleKey] ?? key
@@ -16,18 +17,18 @@ const t: Translate = (key, params) => {
 
 /**
  * Build a real controller with inert sinks.
- * @param fetchLatest - registry stub.
+ * @param fetchTags - registry stub.
  * @param currentVersion - running version.
  * @returns the controller.
  */
 function controller(
-  fetchLatest: () => Promise<string>,
+  fetchTags: () => Promise<RegistryTags>,
   currentVersion: string | null = '0.2.1-rc.2',
 ): UpdateController {
   const notice: UpdateNotice = { show: vi.fn(), dispose: vi.fn() }
   return new UpdateController({
     currentVersion,
-    fetchLatest,
+    fetchTags,
     notice,
     gate: { canCheck: () => true, markChecked: vi.fn() },
   })
@@ -44,7 +45,7 @@ afterEach(cleanup)
 
 describe('UpdateSettingsSection', () => {
   it('checks immediately, ignoring the daily gate, and shows the command', async () => {
-    const checker = controller(async () => '0.2.1-rc.5')
+    const checker = controller(async () => ({ latest: '0.2.1-rc.5', next: null }))
     render(<UpdateSettingsSection controller={checker} t={t} />)
 
     expect(screen.getByText('Not checked yet')).toBeTruthy()
@@ -54,8 +55,23 @@ describe('UpdateSettingsSection', () => {
     expect(screen.getByText('npm install -g @deepseek-ai/dsh@0.2.1-rc.5')).toBeTruthy()
   })
 
+  it('shows a newer next tag and installs it', async () => {
+    const checker = controller(
+      async () => ({ latest: '0.2.2-rc.1', next: '0.2.2-rc.2' }),
+      '0.2.2-rc.1',
+    )
+    render(<UpdateSettingsSection controller={checker} t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Check now' }))
+
+    await waitFor(() => expect(screen.getByText('Update available')).toBeTruthy())
+    expect(screen.getByText('Next version')).toBeTruthy()
+    expect(screen.getByText('0.2.2-rc.2')).toBeTruthy()
+    expect(screen.getByText(en.nextNote)).toBeTruthy()
+    expect(screen.getByText('npm install -g @deepseek-ai/dsh@0.2.2-rc.2')).toBeTruthy()
+  })
+
   it('shows an existing successful result on mount', async () => {
-    const checker = controller(async () => '0.2.1-rc.5')
+    const checker = controller(async () => ({ latest: '0.2.1-rc.5', next: null }))
     await checker.check()
     render(<UpdateSettingsSection controller={checker} t={t} />)
     expect(screen.getByText('Update available')).toBeTruthy()
@@ -63,7 +79,7 @@ describe('UpdateSettingsSection', () => {
   })
 
   it('reports an up-to-date result', async () => {
-    const checker = controller(async () => '0.2.1-rc.5', '0.2.1-rc.5')
+    const checker = controller(async () => ({ latest: '0.2.1-rc.5', next: null }), '0.2.1-rc.5')
     render(<UpdateSettingsSection controller={checker} t={t} />)
     fireEvent.click(screen.getByRole('button', { name: 'Check now' }))
     await waitFor(() => expect(screen.getByText('You are up to date')).toBeTruthy())
@@ -78,7 +94,7 @@ describe('UpdateSettingsSection', () => {
   })
 
   it('copies the update command', async () => {
-    const checker = controller(async () => '0.2.1-rc.5')
+    const checker = controller(async () => ({ latest: '0.2.1-rc.5', next: null }))
     await checker.check()
     render(<UpdateSettingsSection controller={checker} t={t} />)
 
@@ -90,7 +106,7 @@ describe('UpdateSettingsSection', () => {
   })
 
   it('explains when the running version cannot be read', () => {
-    const checker = controller(async () => '0.2.1-rc.5', null)
+    const checker = controller(async () => ({ latest: '0.2.1-rc.5', next: null }), null)
     render(<UpdateSettingsSection controller={checker} t={t} />)
     expect(screen.getByText('Could not read the running DSH version from this page.')).toBeTruthy()
   })

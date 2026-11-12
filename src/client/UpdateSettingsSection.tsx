@@ -41,7 +41,8 @@ export function UpdateSettingsSection({ controller, t }: UpdateSettingsSectionPr
 
   const currentVersion = controller.currentVersion
   const result = status.kind === 'done' ? status.result : null
-  const command = result?.updateAvailable === true ? updateCommand(result.latestVersion) : null
+  const nextVersion = result?.nextVersion ?? null
+  const command = result?.updateAvailable === true ? updateCommand(result.targetVersion) : null
 
   let statusText: string
   let statusClass = 'dsh-cfu-status'
@@ -83,6 +84,13 @@ export function UpdateSettingsSection({ controller, t }: UpdateSettingsSectionPr
           <span className="dsh-cfu-row-label">{t('latest')}</span>
           <code className="dsh-cfu-row-value">{result?.latestVersion ?? '—'}</code>
         </div>
+        {nextVersion !== null && (
+          <div className="dsh-cfu-row">
+            <span className="dsh-cfu-row-label">{t('next')}</span>
+            <code className="dsh-cfu-row-value">{nextVersion}</code>
+          </div>
+        )}
+        {nextVersion !== null && <p className="dsh-cfu-note">{t('nextNote')}</p>}
         <p className={statusClass} role="status">{statusText}</p>
         <div className="dsh-cfu-actions">
           <button

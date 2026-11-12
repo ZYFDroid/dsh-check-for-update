@@ -1,7 +1,7 @@
 /**
- * Pure update-check primitives: registry parsing, command formatting, release
- * extraction, and the once-a-day gate. Kept DOM-free so the rules are testable
- * without a browser.
+ * Pure update-check primitives: registry parsing, version ordering, command
+ * formatting, release extraction, and the once-a-day gate. Kept DOM-free so the
+ * rules are testable without a browser.
  */
 
 /** Canonical npm registry document for the DSH package. */
@@ -17,7 +17,7 @@ export interface HttpResponseLike {
   json(): Promise<unknown>
 }
 
-/** Minimal fetch face accepted by {@link fetchLatestVersion}. */
+/** Minimal fetch face accepted by {@link fetchRegistryTags}. */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<HttpResponseLike>
 
 /** Minimal storage face accepted by the daily gate. */
@@ -26,13 +26,29 @@ export interface StorageLike {
   setItem(key: string, value: string): void
 }
 
+/** Registry dist-tags this plugin consumes. */
+export interface RegistryTags {
+  /** `dist-tags.latest`: the version npm installs by default. */
+  readonly latest: string
+  /**
+   * `dist-tags.next` when it is strictly newer than {@link latest}. The next
+   * tag is promoted to latest later, so it is the earliest signal of an
+   * upcoming release. Older, equal, or malformed next tags are ignored.
+   */
+  readonly next: string | null
+}
+
 /** One completed registry check. */
 export interface CheckResult {
   /** Running DSH version, or null when this page publishes none. */
   readonly currentVersion: string | null
   /** `dist-tags.latest` from the registry. */
   readonly latestVersion: string
-  /** True exactly when currentVersion is known and differs from latestVersion. */
+  /** Newer `dist-tags.next` version, or null when there is none. */
+  readonly nextVersion: string | null
+  /** Version the update command installs: next when it is ahead, else latest. */
+  readonly targetVersion: string
+  /** True exactly when currentVersion is known and older than targetVersion. */
   readonly updateAvailable: boolean
   /** Epoch milliseconds of the completed check. */
   readonly checkedAt: number
@@ -44,6 +60,14 @@ export interface DailyGate {
   canCheck(): boolean
   /** Record a successful check for the current local calendar day. */
   markChecked(): void
+}
+
+/** Parsed `major.minor.patch[-prerelease]` version. */
+interface ParsedVersion {
+  readonly major: number
+  readonly minor: number
+  readonly patch: number
+  readonly prerelease: readonly string[]
 }
 
 /**
@@ -60,12 +84,80 @@ export function readReleaseVersion(value: unknown): string | null {
 }
 
 /**
- * Extract `dist-tags.latest` from a registry document.
+ * Parse a semver-shaped DSH version. Build metadata is accepted and ignored.
+ * @param value - version text.
+ * @returns the parsed version, or null when the text is not semver-shaped.
+ */
+function parseVersion(value: string): ParsedVersion | null {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/u
+    .exec(value.trim())
+  if (match === null) return null
+  const major = Number(match[1])
+  const minor = Number(match[2])
+  const patch = Number(match[3])
+  const prerelease = match[4] === undefined ? [] : match[4].split('.')
+  return { major, minor, patch, prerelease }
+}
+
+/**
+ * Compare prerelease identifier lists with semver precedence.
+ * @param left - left identifiers (empty for a release).
+ * @param right - right identifiers.
+ * @returns negative, zero, or positive when left sorts before/equal/after right.
+ */
+function comparePrerelease(left: readonly string[], right: readonly string[]): number {
+  if (left.length === 0 || right.length === 0) {
+    if (left.length === right.length) return 0
+    return left.length === 0 ? 1 : -1
+  }
+  const shared = Math.min(left.length, right.length)
+  for (let index = 0; index < shared; index += 1) {
+    const a = left[index] ?? ''
+    const b = right[index] ?? ''
+    const aNumeric = /^\d+$/u.test(a)
+    const bNumeric = /^\d+$/u.test(b)
+    if (aNumeric && bNumeric) {
+      const difference = Number(a) - Number(b)
+      if (difference !== 0) return difference < 0 ? -1 : 1
+    } else if (aNumeric !== bNumeric) {
+      return aNumeric ? -1 : 1
+    } else if (a !== b) {
+      return a < b ? -1 : 1
+    }
+  }
+  if (left.length === right.length) return 0
+  return left.length < right.length ? -1 : 1
+}
+
+/**
+ * Compare two DSH versions with semver precedence. Unparseable inputs fall
+ * back to string comparison so a malformed manifest cannot crash a page load.
+ * @param left - left version.
+ * @param right - right version.
+ * @returns negative when left is older, zero when equal, positive when newer.
+ */
+export function compareVersions(left: string, right: string): number {
+  const a = parseVersion(left)
+  const b = parseVersion(right)
+  if (a === null || b === null) {
+    if (left === right) return 0
+    return left < right ? -1 : 1
+  }
+  if (a.major !== b.major) return a.major < b.major ? -1 : 1
+  if (a.minor !== b.minor) return a.minor < b.minor ? -1 : 1
+  if (a.patch !== b.patch) return a.patch < b.patch ? -1 : 1
+  return comparePrerelease(a.prerelease, b.prerelease)
+}
+
+/**
+ * Extract the registry tags this plugin checks. `next` is kept only when it is
+ * strictly newer than `latest`, because an older next tag must not be offered
+ * as an upgrade and a promoted next tag is already latest.
  * @param payload - parsed registry JSON.
- * @returns the latest version string.
+ * @returns the latest version and the meaningful next version.
  * @throws {Error} when the document does not carry a usable latest tag.
  */
-export function latestVersionOf(payload: unknown): string {
+export function registryTagsOf(payload: unknown): RegistryTags {
   if (typeof payload !== 'object' || payload === null) {
     throw new Error('registry response is not an object')
   }
@@ -73,50 +165,66 @@ export function latestVersionOf(payload: unknown): string {
   if (typeof tags !== 'object' || tags === null) {
     throw new Error('registry response has no dist-tags object')
   }
-  const latest: unknown = Reflect.get(tags, 'latest')
-  if (typeof latest !== 'string' || latest.trim() === '') {
+  const rawLatest: unknown = Reflect.get(tags, 'latest')
+  if (typeof rawLatest !== 'string' || rawLatest.trim() === '') {
     throw new Error('registry response has no latest dist-tag')
   }
-  return latest
+  const latest = rawLatest.trim()
+  const rawNext: unknown = Reflect.get(tags, 'next')
+  const next = typeof rawNext === 'string' && rawNext.trim() !== '' ? rawNext.trim() : null
+  return {
+    latest,
+    next: next !== null && compareVersions(next, latest) > 0 ? next : null,
+  }
 }
 
 /**
- * Fetch the registry document and return its latest dist-tag.
+ * Fetch the registry document and return its latest and next tags.
  * @param fetchImpl - fetch implementation (tests inject a stub).
  * @param url - registry document URL.
- * @returns the latest version string.
+ * @returns the parsed tags.
  * @throws {Error} on a non-2xx response or an unusable document.
  */
-export async function fetchLatestVersion(
+export async function fetchRegistryTags(
   fetchImpl: FetchLike = globalThis.fetch,
   url: string = REGISTRY_URL,
-): Promise<string> {
+): Promise<RegistryTags> {
   const response = await fetchImpl(url, {
     headers: { accept: 'application/json' },
     cache: 'no-store',
   })
   if (!response.ok) throw new Error(`registry responded with HTTP ${response.status}`)
-  return latestVersionOf(await response.json())
+  return registryTagsOf(await response.json())
 }
 
 /**
- * Whether the running version differs from the registry's latest tag.
- * Alpha and other prerelease tags stay ignored: the comparison uses `latest`.
+ * Whether the running version is older than the version worth installing.
+ * Installing a version the running page is already ahead of would be a
+ * downgrade, so ordering matters here rather than plain inequality.
  * @param current - running version, or null when unknown.
- * @param latest - registry latest version.
- * @returns true only when both are known and unequal.
+ * @param target - latest or next version.
+ * @returns true only when both are known and current is older.
  */
-export function updateAvailable(current: string | null, latest: string): boolean {
-  return current !== null && current !== latest
+export function updateAvailable(current: string | null, target: string): boolean {
+  return current !== null && compareVersions(current, target) < 0
+}
+
+/**
+ * The version the update command should install for one check.
+ * @param tags - registry tags.
+ * @returns the next tag when usable, else latest.
+ */
+export function targetVersionOf(tags: RegistryTags): string {
+  return tags.next ?? tags.latest
 }
 
 /**
  * The exact command a user copies to upgrade the global install.
- * @param latest - version to install.
+ * @param version - version to install.
  * @returns `npm install -g @deepseek-ai/dsh@<version>`.
  */
-export function updateCommand(latest: string): string {
-  return `npm install -g @deepseek-ai/dsh@${latest}`
+export function updateCommand(version: string): string {
+  return `npm install -g @deepseek-ai/dsh@${version}`
 }
 
 /**

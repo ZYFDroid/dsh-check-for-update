@@ -64,13 +64,14 @@ function context(version: string | null): {
 /**
  * Registry response stub.
  * @param latest - dist-tags.latest value.
+ * @param next - dist-tags.next value when supplied.
  * @returns a fetch stub.
  */
-function registry(latest: string): ReturnType<typeof vi.fn> {
+function registry(latest: string, next?: string): ReturnType<typeof vi.fn> {
   return vi.fn(async () => ({
     ok: true,
     status: 200,
-    json: async () => ({ 'dist-tags': { latest } }),
+    json: async () => ({ 'dist-tags': next === undefined ? { latest } : { latest, next } }),
   }))
 }
 
@@ -113,6 +114,22 @@ describe('client apply', () => {
 
     for (const dispose of disposers.reverse()) dispose()
     expect(document.querySelector('.dsh-cfu-notice')).toBeNull()
+  })
+
+  it('notifies for a newer next tag even when latest matches the running version', async () => {
+    const fetchMock = registry('0.2.2-rc.1', '0.2.2-rc.2')
+    vi.stubGlobal('fetch', fetchMock)
+    const { ctx, disposers } = context('0.2.2-rc.1')
+
+    apply(ctx)
+    await vi.waitFor(() => {
+      expect(document.querySelector('.dsh-cfu-notice')).not.toBeNull()
+    })
+
+    const text = document.querySelector('.dsh-cfu-notice')?.textContent
+    expect(text).toContain('0.2.2-rc.2')
+    expect(text).toContain('npm install -g @deepseek-ai/dsh@0.2.2-rc.2')
+    for (const dispose of disposers.reverse()) dispose()
   })
 
   it('skips the automatic fetch after a successful check today', async () => {

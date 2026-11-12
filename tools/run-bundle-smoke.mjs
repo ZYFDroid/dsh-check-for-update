@@ -10,7 +10,7 @@
  *    platform modules (React and its JSX runtime).
  * 2. Page-load behavior: the running version is read from the module manifest,
  *    the registry is fetched, and a persistent notice with the exact command
- *    appears.
+ *    appears, including a newer `next` tag when the registry publishes one.
  * 3. Daily gate: a second apply on the same day performs no fetch.
  * 4. Settings: a `settings.section` registration is contributed.
  *
@@ -71,7 +71,13 @@ function page(fetchCount) {
     return {
       ok: true,
       status: 200,
-      json: async () => ({ 'dist-tags': { latest: '0.2.1-rc.5', alpha: '0.2.2-alpha.2' } }),
+      json: async () => ({
+        'dist-tags': {
+          latest: '0.2.1-rc.5',
+          next: '0.2.2-rc.2',
+          alpha: '0.2.2-alpha.2',
+        },
+      }),
     }
   }
   const run = new Function(
@@ -140,7 +146,9 @@ const notice = first.window.document.querySelector('.dsh-cfu-notice')
 ok('the page-load check opens the notice', notice !== null)
 ok('the notice names the running version', notice?.textContent.includes('0.2.1-rc.2'))
 ok('the notice names the latest version', notice?.textContent.includes('0.2.1-rc.5'))
-ok('the notice carries the exact update command', notice?.textContent.includes('npm install -g @deepseek-ai/dsh@0.2.1-rc.5'))
+ok('the notice names the newer next version', notice?.textContent.includes('0.2.2-rc.2'))
+is('the notice lists current, latest, and next', notice?.querySelectorAll('.dsh-cfu-version').length, 3)
+ok('the notice carries the exact update command', notice?.textContent.includes('npm install -g @deepseek-ai/dsh@0.2.2-rc.2'))
 is('one registry request ran', fetchCount.value, 1)
 is('one settings section was contributed', registrations.length, 1)
 is('the settings section id is stable', registrations[0]?.options.id, 'check-for-update')

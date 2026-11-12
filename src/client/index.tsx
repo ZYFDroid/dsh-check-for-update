@@ -3,10 +3,10 @@
  *
  * On page load (at most once per local calendar day) this reads the running
  * DSH release from the client module manifest, fetches the npm registry's
- * `latest` dist-tag, and — when the two differ — opens a persistent
- * bottom-right notice containing both versions, the exact upgrade command, and
- * a copy button. The Settings section runs the same check immediately, with no
- * daily limit, and keeps the result inline.
+ * `latest` and `next` dist-tags, and — when the running version is older than
+ * either — opens a persistent bottom-right notice containing the versions, the
+ * exact upgrade command, and a copy button. The Settings section runs the same
+ * check immediately, with no daily limit, and keeps the result inline.
  *
  * The plugin is client-only: it adds no host service, setting, tool, or
  * session event, and the host entry contributes nothing.
@@ -19,7 +19,7 @@ import { ensureStyles } from './styles.ts'
 import {
   browserStorage,
   createDailyGate,
-  fetchLatestVersion,
+  fetchRegistryTags,
   readReleaseVersion,
 } from './update-core.ts'
 
@@ -97,7 +97,7 @@ export function apply(ctx: ClientContext): void {
   const notice = new DshUpdateNotice(t)
   const controller = new UpdateController({
     currentVersion,
-    fetchLatest: () => fetchLatestVersion(),
+    fetchTags: () => fetchRegistryTags(),
     notice,
     gate: createDailyGate(browserStorage()),
     log: (message, error) => { ctx.logger?.warn(message, error) },

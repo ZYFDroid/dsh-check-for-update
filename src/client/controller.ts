@@ -4,17 +4,19 @@
  */
 import type { UpdateNotice } from './notice.ts'
 import {
+  targetVersionOf,
   updateAvailable,
   type CheckResult,
   type DailyGate,
+  type RegistryTags,
 } from './update-core.ts'
 
 /** Construction inputs for {@link UpdateController}. */
 export interface UpdateControllerOptions {
   /** Running DSH version, or null when the page publishes none. */
   readonly currentVersion: string | null
-  /** Fetch the registry's latest dist-tag. */
-  readonly fetchLatest: () => Promise<string>
+  /** Fetch the registry's latest and next dist-tags. */
+  readonly fetchTags: () => Promise<RegistryTags>
   /** Persistent notice sink. */
   readonly notice: UpdateNotice
   /** Once-a-day gate consulted only by {@link UpdateController.autoCheck}. */
@@ -106,12 +108,15 @@ export class UpdateController {
    * @returns the completed result.
    */
   private async performCheck(record: boolean): Promise<CheckResult> {
-    const latestVersion = await this.options.fetchLatest()
+    const tags = await this.options.fetchTags()
+    const targetVersion = targetVersionOf(tags)
     const currentVersion = this.currentVersion
     const result: CheckResult = {
       currentVersion,
-      latestVersion,
-      updateAvailable: updateAvailable(currentVersion, latestVersion),
+      latestVersion: tags.latest,
+      nextVersion: tags.next,
+      targetVersion,
+      updateAvailable: updateAvailable(currentVersion, targetVersion),
       checkedAt: this.now().getTime(),
     }
     if (this.disposed) return result

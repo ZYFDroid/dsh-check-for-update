@@ -89,8 +89,11 @@ export class DshUpdateNotice implements UpdateNotice {
       this.versionRow(this.t('current'), result.currentVersion ?? this.t('unknown')),
       this.versionRow(this.t('latest'), result.latestVersion),
     )
+    if (result.nextVersion !== null) {
+      versions.append(this.versionRow(this.t('next'), result.nextVersion))
+    }
 
-    const command = updateCommand(result.latestVersion)
+    const command = updateCommand(result.targetVersion)
     const label = element('div', 'dsh-cfu-label', this.t('commandLabel'))
     const commandRow = element('div', 'dsh-cfu-command')
     const code = element('code', '', command)
